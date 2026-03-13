@@ -48,7 +48,7 @@
   when: ansible_os_family == "Windows"
 
 - name: Import certificate to Windows cert store
-  community.windows.win_certificate_store:
+  ansible.windows.win_certificate_store:
     path: "{{ ssl_pfx_dest_windows }}"
     password: "{{ pfx_password }}"
     store_location: "{{ cert_store_location }}"

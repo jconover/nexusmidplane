@@ -10,7 +10,7 @@
     dest: "{{ app_dest_path }}"
 
 - name: Create IIS application pool
-  community.windows.win_iis_webapppool:
+  microsoft.iis.web_app_pool:
     name: "{{ iis_app_pool_name }}"
     state: started
     attributes:
@@ -18,7 +18,7 @@
       startMode: AlwaysRunning
 
 - name: Create IIS website
-  community.windows.win_iis_website:
+  microsoft.iis.website:
     name: "{{ iis_site_name }}"
     state: started
     port: 80
@@ -28,12 +28,13 @@
     application_pool: "{{ iis_app_pool_name }}"
 
 - name: Add HTTPS binding to IIS site
-  community.windows.win_iis_webbinding:
+  microsoft.iis.website:
     name: "{{ iis_site_name }}"
-    protocol: https
-    port: 443
-    ip: "*"
-    certificate_hash: "{{ ssl_cert_thumbprint }}"
-    certificate_store_name: MY
-    state: present
+    bindings:
+      - protocol: https
+        port: 443
+        ip: "*"
+        certificate_hash: "{{ ssl_cert_thumbprint }}"
+        certificate_store_name: MY
+    state: started
   when: ssl_cert_thumbprint | length > 0
