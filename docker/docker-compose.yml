@@ -1,5 +1,3 @@
-version: "3.9"
-
 # NexusMidplane On-Premises Simulation
 # This docker-compose simulates a typical on-prem middleware stack:
 #   - Apache HTTPD as reverse proxy (simulates an enterprise edge gateway)
@@ -27,7 +25,8 @@ services:
 
   wildfly:
     build:
-      context: ./wildfly
+      context: ..
+      dockerfile: docker/wildfly/Dockerfile
     ports:
       - "8080:8080"
       - "9990:9990"

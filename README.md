@@ -172,7 +172,7 @@ export AWS_PROFILE=nexusmidplane
 
 ```bash
 # Clone the repository
-git clone https://github.com/<your-org>/nexusmidplane.git
+git clone https://github.com/jconover/nexusmidplane.git
 cd nexusmidplane
 
 # Start the on-prem environment
