@@ -33,3 +33,9 @@ variable "bgp_asn" {
   type        = number
   default     = 65000
 }
+
+variable "enabled" {
+  description = "Whether to create VPN resources (false when no real on-prem IP is configured)"
+  type        = bool
+  default     = true
+}

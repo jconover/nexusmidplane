@@ -35,3 +35,9 @@ variable "log_retention_days" {
   type        = number
   default     = 30
 }
+
+variable "region" {
+  description = "AWS region for CloudWatch dashboard widgets"
+  type        = string
+  default     = "us-east-2"
+}

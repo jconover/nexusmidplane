@@ -88,6 +88,7 @@ module "cloudwatch" {
   environment         = var.environment
   project_name        = var.project_name
   alert_email         = var.alert_email
+  region              = var.region
 }
 
 # ── VPN ───────────────────────────────────────────────────────────────────────
@@ -95,8 +96,9 @@ module "cloudwatch" {
 module "vpn" {
   source = "./modules/vpn"
 
+  enabled                = var.onprem_public_ip != "0.0.0.0"
   vpc_id                 = module.vpc.vpc_id
-  private_route_table_id  = module.vpc.private_route_table_id
+  private_route_table_id = module.vpc.private_route_table_id
   onprem_public_ip       = var.onprem_public_ip
   onprem_cidr            = var.onprem_cidr
   environment            = var.environment
