@@ -3,6 +3,11 @@ variable "vpc_id" {
   type        = string
 }
 
+variable "private_route_table_id" {
+  description = "ID of the private route table for VGW route propagation"
+  type        = string
+}
+
 variable "onprem_public_ip" {
   description = "Public IP address of the on-premises VPN endpoint"
   type        = string
