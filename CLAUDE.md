@@ -14,7 +14,7 @@ Path-based routing: `/java/*` → WildFly, `/dotnet/*` → IIS/.NET on both tier
 
 ### Terraform (from `terraform/`)
 ```bash
-terraform init                                    # First-time setup (requires S3 backend config)
+terraform init -backend-config=backend.tfbackend   # First-time setup (see backend.tfbackend.example)
 terraform init -backend=false                     # Init without backend (for validation only)
 terraform fmt -check -recursive                   # Format check
 terraform validate                                # Validate config
@@ -81,7 +81,7 @@ Root module (`terraform/main.tf`) wires 7 child modules:
 
 Data flow: `vpc → ec2-linux/ec2-windows/alb/vpn`, `acm → alb`, `ec2-* → alb target groups + cloudwatch`.
 
-Backend state: S3 + DynamoDB locking. Bucket name requires `<ACCOUNT_ID>` substitution in `backend.tf` before first `terraform init`.
+Backend state: S3 with native file locking (`use_lockfile`). Bucket name is provided via `backend.tfbackend` (gitignored) — copy `backend.tfbackend.example` and fill in your AWS account ID. Init with `terraform init -backend-config=backend.tfbackend`.
 
 Default region: `us-east-2`. Default instance types: `t3.small`.
 

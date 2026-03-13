@@ -5,6 +5,8 @@
 *.tfstate.backup
 *.tfplan
 terraform.tfvars          # Local overrides — use environments/*/terraform.tfvars
+*.tfbackend               # Account-specific backend config (contains bucket name)
+terraform/bootstrap/terraform.tfstate*  # Bootstrap uses local state
 override.tf
 override.tf.json
 *_override.tf
