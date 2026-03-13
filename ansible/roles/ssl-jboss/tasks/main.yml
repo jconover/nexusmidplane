@@ -1,0 +1,65 @@
+---
+- name: Copy SSL certificate to WildFly server
+  ansible.builtin.copy:
+    src: "{{ ssl_cert_source }}"
+    dest: "{{ wildfly_home }}/standalone/configuration/nexusmidplane.crt"
+    owner: "{{ wildfly_user }}"
+    group: "{{ wildfly_user }}"
+    mode: "0640"
+
+- name: Copy SSL key to WildFly server
+  ansible.builtin.copy:
+    src: "{{ ssl_key_source }}"
+    dest: "{{ wildfly_home }}/standalone/configuration/nexusmidplane.key"
+    owner: "{{ wildfly_user }}"
+    group: "{{ wildfly_user }}"
+    mode: "0600"
+
+- name: Create PKCS12 keystore from cert and key
+  ansible.builtin.command: >
+    openssl pkcs12 -export
+    -in {{ wildfly_home }}/standalone/configuration/nexusmidplane.crt
+    -inkey {{ wildfly_home }}/standalone/configuration/nexusmidplane.key
+    -out {{ pkcs12_path }}
+    -name {{ cert_alias }}
+    -passout pass:{{ keystore_password }}
+  args:
+    creates: "{{ pkcs12_path }}"
+
+- name: Convert PKCS12 to JKS keystore
+  ansible.builtin.command: >
+    keytool -importkeystore
+    -srckeystore {{ pkcs12_path }}
+    -srcstoretype PKCS12
+    -srcstorepass {{ keystore_password }}
+    -destkeystore {{ keystore_path }}
+    -deststoretype JKS
+    -deststorepass {{ keystore_password }}
+    -alias {{ cert_alias }}
+    -noprompt
+  args:
+    creates: "{{ keystore_path }}"
+  notify: restart wildfly
+
+- name: Set keystore ownership
+  ansible.builtin.file:
+    path: "{{ keystore_path }}"
+    owner: "{{ wildfly_user }}"
+    group: "{{ wildfly_user }}"
+    mode: "0640"
+
+- name: Deploy SSL CLI commands batch file
+  ansible.builtin.template:
+    src: ssl-cli-commands.j2
+    dest: /tmp/ssl-cli-commands.cli
+    mode: "0644"
+
+- name: Apply SSL config to WildFly via CLI
+  ansible.builtin.command: >
+    {{ wildfly_home }}/bin/jboss-cli.sh
+    --connect
+    --file=/tmp/ssl-cli-commands.cli
+  register: ssl_cli_result
+  changed_when: "'outcome' in ssl_cli_result.stdout"
+  failed_when: "'FAILED' in ssl_cli_result.stdout and ssl_cli_result.rc != 0"
+  notify: restart wildfly

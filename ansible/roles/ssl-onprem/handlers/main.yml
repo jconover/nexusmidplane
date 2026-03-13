@@ -1,0 +1,12 @@
+---
+- name: restart apache2
+  ansible.builtin.service:
+    name: apache2
+    state: restarted
+  when: ansible_os_family != "Windows"
+
+- name: restart iis
+  ansible.windows.win_service:
+    name: W3SVC
+    state: restarted
+  when: ansible_os_family == "Windows"

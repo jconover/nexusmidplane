@@ -1,0 +1,363 @@
+name: NexusMidplane Deploy Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'plan'
+        type: choice
+        options:
+          - plan
+          - apply
+          - destroy
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+
+permissions:
+  id-token: write   # Required for OIDC
+  contents: read
+
+env:
+  TF_VERSION: '1.7.0'
+  JAVA_VERSION: '17'
+  DOTNET_VERSION: '8.0'
+  AWS_REGION: 'us-east-1'
+  TF_WORKING_DIR: './terraform'
+
+jobs:
+  # ────────────────────────────────────────────────────────────
+  lint:
+    name: Lint & Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Validate
+        run: |
+          terraform init -backend=false
+          terraform validate
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Setup Python for Ansible
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Ansible + ansible-lint
+        run: pip install ansible ansible-lint boto3 botocore
+
+      - name: Ansible Lint
+        run: ansible-lint ansible/
+        continue-on-error: true   # Warn only; tighten in production
+
+  # ────────────────────────────────────────────────────────────
+  build-java:
+    name: Build Java WAR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build WAR with Maven
+        run: ./mvnw clean package -DskipTests --no-transfer-progress
+        working-directory: app/java-app
+
+      - name: Upload WAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-app-war
+          path: app/java-app/target/*.war
+          retention-days: 7
+
+  # ────────────────────────────────────────────────────────────
+  build-dotnet:
+    name: Build .NET App
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore
+        working-directory: app/dotnet-app
+
+      - name: Publish Release build
+        run: dotnet publish -c Release -o publish/
+        working-directory: app/dotnet-app
+
+      - name: Upload published artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-app-publish
+          path: app/dotnet-app/publish/
+          retention-days: 7
+
+  # ────────────────────────────────────────────────────────────
+  terraform-plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+    needs: [lint]
+    environment: ${{ github.event.inputs.environment || 'dev' }}
+    outputs:
+      plan_exitcode: ${{ steps.plan.outputs.exitcode }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-TerraformPlan
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=nexusmidplane/${{ github.event.inputs.environment || 'dev' }}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan \
+            -var-file="environments/${{ github.event.inputs.environment || 'dev' }}/terraform.tfvars" \
+            -out=tfplan \
+            -detailed-exitcode
+        working-directory: ${{ env.TF_WORKING_DIR }}
+        continue-on-error: true
+
+      - name: Upload Terraform Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: ${{ env.TF_WORKING_DIR }}/tfplan
+          retention-days: 1
+
+  # ────────────────────────────────────────────────────────────
+  terraform-apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: [terraform-plan, build-java, build-dotnet]
+    if: github.event.inputs.action == 'apply'
+    environment:
+      name: production
+      # GitHub will require a manual approval review for this environment
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-TerraformApply
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=nexusmidplane/${{ github.event.inputs.environment }}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Download Terraform Plan
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan
+          path: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Output ALB DNS
+        run: terraform output -raw alb_dns_name
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+  # ────────────────────────────────────────────────────────────
+  ansible-configure:
+    name: Ansible Configure
+    runs-on: ubuntu-latest
+    needs: [terraform-apply]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Java WAR
+        uses: actions/download-artifact@v4
+        with:
+          name: java-app-war
+          path: app/java-app/target/
+
+      - name: Download .NET publish
+        uses: actions/download-artifact@v4
+        with:
+          name: dotnet-app-publish
+          path: app/dotnet-app/publish/
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Ansible + AWS dynamic inventory
+        run: pip install ansible boto3 botocore
+
+      - name: Install Ansible Galaxy requirements
+        run: ansible-galaxy install -r ansible/requirements.yml
+        if: hashFiles('ansible/requirements.yml') != ''
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-Ansible
+
+      - name: Run Ansible playbook (AWS)
+        run: |
+          ansible-playbook \
+            -i ansible/inventory/aws_ec2.yml \
+            ansible/aws.yml \
+            --private-key="${{ secrets.EC2_SSH_KEY }}" \
+            -e "env=${{ github.event.inputs.environment }}"
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: 'False'
+
+  # ────────────────────────────────────────────────────────────
+  smoke-tests:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    needs: [ansible-configure]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform (to read outputs)
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-SmokeTest
+
+      - name: Get ALB DNS from Terraform output
+        id: alb
+        run: |
+          terraform init -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=nexusmidplane/${{ github.event.inputs.environment }}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+          echo "alb_dns=$(terraform output -raw alb_dns_name)" >> "$GITHUB_OUTPUT"
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Run smoke tests
+        run: |
+          chmod +x scripts/smoke-test.sh
+          TARGET_HOST="${{ steps.alb.outputs.alb_dns }}" bash scripts/smoke-test.sh
+
+  # ────────────────────────────────────────────────────────────
+  notify:
+    name: Notify
+    runs-on: ubuntu-latest
+    needs: [smoke-tests]
+    if: always()
+    steps:
+      - name: Notify success
+        if: needs.smoke-tests.result == 'success'
+        run: |
+          echo "✅ Deployment successful to ${{ github.event.inputs.environment || 'dev' }}"
+          # Add Slack/Teams webhook call here if desired:
+          # curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+          #   -H 'Content-type: application/json' \
+          #   --data '{"text":"✅ NexusMidplane deploy succeeded"}'
+
+      - name: Notify failure
+        if: needs.smoke-tests.result != 'success'
+        run: |
+          echo "❌ Deployment FAILED for ${{ github.event.inputs.environment || 'dev' }}"
+          # curl -s -X POST "${{ secrets.SLACK_WEBHOOK_URL }}" \
+          #   -H 'Content-type: application/json' \
+          #   --data '{"text":"❌ NexusMidplane deploy FAILED"}'
+
+  # ────────────────────────────────────────────────────────────
+  destroy:
+    name: Terraform Destroy
+    runs-on: ubuntu-latest
+    if: github.event.inputs.action == 'destroy'
+    environment:
+      name: production
+      # Requires manual approval before destroying
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: GitHubActions-Destroy
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}" \
+            -backend-config="key=nexusmidplane/${{ github.event.inputs.environment }}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+        working-directory: ${{ env.TF_WORKING_DIR }}
+
+      - name: Terraform Destroy
+        run: |
+          terraform destroy \
+            -var-file="environments/${{ github.event.inputs.environment }}/terraform.tfvars" \
+            -auto-approve
+        working-directory: ${{ env.TF_WORKING_DIR }}

@@ -1,0 +1,39 @@
+---
+- name: Create application directory
+  ansible.windows.win_file:
+    path: "{{ app_dest_path }}"
+    state: directory
+
+- name: Copy published .NET application
+  ansible.windows.win_copy:
+    src: "{{ app_source_path }}"
+    dest: "{{ app_dest_path }}"
+
+- name: Create IIS application pool
+  community.windows.win_iis_webapppool:
+    name: "{{ iis_app_pool_name }}"
+    state: started
+    attributes:
+      managedRuntimeVersion: ""
+      startMode: AlwaysRunning
+
+- name: Create IIS website
+  community.windows.win_iis_website:
+    name: "{{ iis_site_name }}"
+    state: started
+    port: 80
+    ip: "*"
+    hostname: ""
+    physical_path: "{{ app_dest_path }}"
+    application_pool: "{{ iis_app_pool_name }}"
+
+- name: Add HTTPS binding to IIS site
+  community.windows.win_iis_webbinding:
+    name: "{{ iis_site_name }}"
+    protocol: https
+    port: 443
+    ip: "*"
+    certificate_hash: "{{ ssl_cert_thumbprint }}"
+    certificate_store_name: MY
+    state: present
+  when: ssl_cert_thumbprint | length > 0

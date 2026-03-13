@@ -1,0 +1,58 @@
+---
+# Linux (Apache proxy) tasks
+- name: Copy SSL certificate to Linux host
+  ansible.builtin.copy:
+    src: "{{ ssl_cert_source }}"
+    dest: "{{ ssl_cert_dest_linux }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: ansible_os_family != "Windows"
+
+- name: Copy SSL key to Linux host
+  ansible.builtin.copy:
+    src: "{{ ssl_key_source }}"
+    dest: "{{ ssl_key_dest_linux }}"
+    owner: root
+    group: ssl-cert
+    mode: "0640"
+  when: ansible_os_family != "Windows"
+
+# Windows (IIS) tasks
+- name: Ensure cert directory exists (Windows)
+  ansible.windows.win_file:
+    path: C:\certs
+    state: directory
+  when: ansible_os_family == "Windows"
+
+- name: Copy SSL certificate to Windows host
+  ansible.windows.win_copy:
+    src: "{{ ssl_cert_source }}"
+    dest: "{{ ssl_cert_dest_windows }}"
+  when: ansible_os_family == "Windows"
+
+- name: Convert cert+key to PFX for Windows import
+  ansible.builtin.command: >
+    openssl pkcs12 -export
+    -in {{ ssl_cert_source }}
+    -inkey {{ ssl_key_source }}
+    -out /tmp/nexusmidplane.pfx
+    -passout pass:{{ pfx_password }}
+  delegate_to: localhost
+  when: ansible_os_family == "Windows"
+
+- name: Copy PFX to Windows host
+  ansible.windows.win_copy:
+    src: /tmp/nexusmidplane.pfx
+    dest: "{{ ssl_pfx_dest_windows }}"
+  when: ansible_os_family == "Windows"
+
+- name: Import certificate to Windows cert store
+  community.windows.win_certificate_store:
+    path: "{{ ssl_pfx_dest_windows }}"
+    password: "{{ pfx_password }}"
+    store_location: "{{ cert_store_location }}"
+    store_name: "{{ cert_store_name }}"
+    state: present
+  register: cert_import
+  when: ansible_os_family == "Windows"

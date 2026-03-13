@@ -1,0 +1,52 @@
+version: "3.9"
+
+# NexusMidplane On-Premises Simulation
+# This docker-compose simulates a typical on-prem middleware stack:
+#   - Apache HTTPD as reverse proxy (simulates an enterprise edge gateway)
+#   - WildFly as Java EE application server
+#   - .NET 8 on Linux (in real on-prem, this would be Windows Server + IIS;
+#     Linux .NET is used here for portability across dev environments)
+
+networks:
+  nexus-onprem:
+    driver: bridge
+
+services:
+  apache-proxy:
+    build:
+      context: ./apache
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - wildfly
+      - dotnet-app
+    networks:
+      - nexus-onprem
+    restart: unless-stopped
+
+  wildfly:
+    build:
+      context: ./wildfly
+    ports:
+      - "8080:8080"
+      - "9990:9990"
+    networks:
+      - nexus-onprem
+    restart: unless-stopped
+
+  dotnet-app:
+    # NOTE: In a real on-prem environment this would be a Windows Server container
+    # running IIS hosting a .NET application. We use the Linux .NET runtime here
+    # for cross-platform portability.
+    build:
+      context: ..
+      dockerfile: docker/dotnet/Dockerfile
+    ports:
+      - "5000:5000"
+    networks:
+      - nexus-onprem
+    restart: unless-stopped
+    environment:
+      - ASPNETCORE_URLS=http://+:5000
+      - ASPNETCORE_ENVIRONMENT=Production

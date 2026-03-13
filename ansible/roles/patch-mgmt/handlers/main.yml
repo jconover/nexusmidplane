@@ -1,0 +1,14 @@
+---
+- name: reboot linux
+  ansible.builtin.reboot:
+    reboot_timeout: 300
+  when:
+    - reboot_allowed | bool
+    - ansible_os_family != "Windows"
+
+- name: reboot windows
+  ansible.windows.win_reboot:
+    reboot_timeout: 300
+  when:
+    - reboot_allowed | bool
+    - ansible_os_family == "Windows"

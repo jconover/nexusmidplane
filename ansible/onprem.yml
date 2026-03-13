@@ -1,0 +1,26 @@
+---
+- name: Setup and deploy WildFly (on-prem)
+  hosts: wildfly_servers
+  become: true
+  roles:
+    - jboss-setup
+    - jboss-deploy
+    - ssl-jboss
+
+- name: Setup and deploy IIS .NET app (on-prem)
+  hosts: iis_servers
+  roles:
+    - iis-setup
+    - iis-deploy
+
+- name: Configure Apache reverse proxy (on-prem)
+  hosts: apache_proxy
+  become: true
+  roles:
+    - ssl-onprem
+    - apache-proxy
+
+- name: Patch management (on-prem)
+  hosts: onprem
+  roles:
+    - patch-mgmt

@@ -1,0 +1,40 @@
+---
+- name: Copy WAR to WildFly deployments directory
+  ansible.builtin.copy:
+    src: "{{ war_source_path }}"
+    dest: "{{ wildfly_home }}/standalone/deployments/{{ app_context }}.war"
+    owner: "{{ wildfly_user }}"
+    group: "{{ wildfly_user }}"
+    mode: "0644"
+  register: war_copy
+
+- name: Wait for deployment marker file
+  ansible.builtin.wait_for:
+    path: "{{ wildfly_home }}/standalone/deployments/{{ app_context }}.war.deployed"
+    state: present
+    timeout: "{{ deploy_timeout }}"
+  when: war_copy.changed
+
+- name: Validate deployment via jboss-cli
+  ansible.builtin.command: >
+    {{ wildfly_home }}/bin/jboss-cli.sh
+    --connect
+    --command="deployment-info --name={{ app_context }}.war"
+  register: deploy_info
+  changed_when: false
+  failed_when: "'FAILED' in deploy_info.stdout or deploy_info.rc != 0"
+
+- name: Show deployment info
+  ansible.builtin.debug:
+    msg: "{{ deploy_info.stdout_lines }}"
+
+- name: Smoke test - health endpoint
+  ansible.builtin.uri:
+    url: "{{ health_endpoint }}"
+    method: GET
+    status_code: 200
+    timeout: 30
+  register: health_check
+  retries: 5
+  delay: 10
+  until: health_check.status == 200

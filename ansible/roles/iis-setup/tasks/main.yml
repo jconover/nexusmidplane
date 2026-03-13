@@ -1,0 +1,37 @@
+---
+- name: Install IIS features
+  ansible.windows.win_feature:
+    name:
+      - Web-Server
+      - Web-Asp-Net45
+      - Web-Net-Ext45
+      - Web-ISAPI-Ext
+      - Web-ISAPI-Filter
+      - Web-Default-Doc
+      - Web-Static-Content
+      - Web-Http-Logging
+      - Web-Mgmt-Console
+      - Web-Scripting-Tools
+    state: present
+    include_management_tools: true
+  notify: restart iis
+
+- name: Download .NET 8 Hosting Bundle
+  ansible.windows.win_get_url:
+    url: "{{ dotnet_hosting_bundle_url }}"
+    dest: C:\Temp\dotnet-hosting-win.exe
+  register: dotnet_download
+
+- name: Install .NET 8 Hosting Bundle
+  ansible.windows.win_package:
+    path: C:\Temp\dotnet-hosting-win.exe
+    arguments: /quiet /norestart
+    state: present
+  when: dotnet_download.changed
+  notify: restart iis
+
+- name: Ensure IIS service is running
+  ansible.windows.win_service:
+    name: W3SVC
+    state: started
+    start_mode: auto

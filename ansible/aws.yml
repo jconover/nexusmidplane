@@ -1,0 +1,26 @@
+---
+- name: Setup and deploy WildFly (AWS)
+  hosts: wildfly_servers
+  become: true
+  roles:
+    - jboss-setup
+    - jboss-deploy
+    - ssl-jboss
+
+- name: Setup and deploy IIS .NET app (AWS)
+  hosts: iis_servers
+  roles:
+    - iis-setup
+    - iis-deploy
+
+- name: Configure Apache reverse proxy (AWS)
+  hosts: apache_proxy
+  become: true
+  roles:
+    - ssl-onprem
+    - apache-proxy
+
+- name: Patch management (AWS)
+  hosts: wildfly_servers:iis_servers:apache_proxy
+  roles:
+    - patch-mgmt

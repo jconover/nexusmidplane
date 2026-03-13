@@ -1,0 +1,28 @@
+#!/bin/sh
+# Maven Wrapper script
+# Downloads Maven if not present and delegates to it.
+# Full script: https://github.com/apache/maven-wrapper
+
+set -e
+
+MAVEN_WRAPPER_JAR=".mvn/wrapper/maven-wrapper.jar"
+MAVEN_WRAPPER_PROPERTIES=".mvn/wrapper/maven-wrapper.properties"
+
+# Read distributionUrl from properties
+DISTRIBUTION_URL=$(grep distributionUrl "$MAVEN_WRAPPER_PROPERTIES" | cut -d= -f2-)
+
+# Determine Maven home
+MAVEN_HOME="${HOME}/.m2/wrapper/dists/$(basename "$DISTRIBUTION_URL" .zip)"
+
+if [ ! -d "$MAVEN_HOME" ]; then
+    echo "Downloading Maven from $DISTRIBUTION_URL ..."
+    mkdir -p "$MAVEN_HOME"
+    curl -fsSL "$DISTRIBUTION_URL" -o /tmp/maven.zip
+    unzip -q /tmp/maven.zip -d "$MAVEN_HOME"
+    rm /tmp/maven.zip
+fi
+
+# Find mvn binary
+MVN_BIN=$(find "$MAVEN_HOME" -name "mvn" -type f | head -1)
+
+exec "$MVN_BIN" "$@"

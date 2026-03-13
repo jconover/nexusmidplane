@@ -1,0 +1,221 @@
+# ─────────────────────────────────────────────────────────────
+# Vagrantfile.reference — VM-based on-prem simulation
+#
+# REFERENCE ONLY — This project uses Docker Compose as the
+# primary on-prem simulation (see docker/docker-compose.yml).
+#
+# This file demonstrates how the same infrastructure could be
+# provisioned using Vagrant + VirtualBox VMs instead of Docker.
+# Use this if you need full VM isolation, kernel-level testing,
+# or to demonstrate Vagrant skills alongside Docker.
+#
+# Prerequisites:
+#   - Vagrant >= 2.4: https://www.vagrantup.com/downloads
+#   - VirtualBox >= 7.0: https://www.virtualbox.org/
+#   - vagrant-hostmanager plugin: vagrant plugin install vagrant-hostmanager
+#
+# Usage (when renamed to Vagrantfile):
+#   vagrant up              # Provision all VMs
+#   vagrant ssh apache-vm   # SSH into Apache proxy VM
+#   vagrant ssh wildfly-vm  # SSH into WildFly VM
+#   vagrant ssh dotnet-vm   # SSH into .NET VM
+#   vagrant halt            # Stop VMs (preserves state)
+#   vagrant destroy -f      # Delete all VMs
+# ─────────────────────────────────────────────────────────────
+
+Vagrant.configure("2") do |config|
+
+  # ── Base box ──────────────────────────────────────────────
+  # Rocky Linux 9 — open-source RHEL equivalent
+  # Similar to what many financial services companies run on-prem
+  BASEBOX = "rockylinux/9"
+
+  # ── Plugin: manage /etc/hosts on host and guests ──────────
+  if Vagrant.has_plugin?("vagrant-hostmanager")
+    config.hostmanager.enabled      = true
+    config.hostmanager.manage_host  = true
+    config.hostmanager.manage_guest = true
+    config.hostmanager.ignore_private_ip = false
+  end
+
+  # ── Shared provisioning: install Java + common tools ──────
+  common_provision = <<~SHELL
+    set -euo pipefail
+    dnf install -y epel-release
+    dnf install -y java-17-openjdk-devel curl wget unzip git
+    java -version
+  SHELL
+
+  # ─────────────────────────────────────────────────────────
+  # VM 1: Apache Proxy
+  # ─────────────────────────────────────────────────────────
+  config.vm.define "apache-vm" do |apache|
+    apache.vm.box      = BASEBOX
+    apache.vm.hostname = "apache.nexusmidplane.internal"
+    apache.vm.network  "private_network", ip: "192.168.56.10"
+    apache.vm.network  "forwarded_port",  guest: 80,  host: 8180
+    apache.vm.network  "forwarded_port",  guest: 443, host: 8143
+
+    apache.vm.provider "virtualbox" do |vb|
+      vb.name   = "nexus-apache"
+      vb.memory = "512"
+      vb.cpus   = 1
+    end
+
+    apache.vm.provision "shell", inline: <<~SHELL
+      set -euo pipefail
+      dnf install -y httpd mod_ssl
+      systemctl enable --now httpd
+
+      # Configure mod_proxy to backend VMs
+      cat > /etc/httpd/conf.d/nexusmidplane.conf <<'EOF'
+      <VirtualHost *:80>
+        ServerName apache.nexusmidplane.internal
+
+        ProxyPreserveHost On
+
+        # Java app (WildFly)
+        ProxyPass        /java/ http://wildfly.nexusmidplane.internal:8080/java/
+        ProxyPassReverse /java/ http://wildfly.nexusmidplane.internal:8080/java/
+
+        # .NET app (Kestrel)
+        ProxyPass        /dotnet/ http://dotnet.nexusmidplane.internal:5000/dotnet/
+        ProxyPassReverse /dotnet/ http://dotnet.nexusmidplane.internal:5000/dotnet/
+
+        ErrorLog  /var/log/httpd/nexus-error.log
+        CustomLog /var/log/httpd/nexus-access.log combined
+      </VirtualHost>
+      EOF
+
+      systemctl reload httpd
+      echo "Apache proxy configured and running."
+    SHELL
+  end
+
+  # ─────────────────────────────────────────────────────────
+  # VM 2: WildFly (Java App Server)
+  # ─────────────────────────────────────────────────────────
+  config.vm.define "wildfly-vm" do |wildfly|
+    wildfly.vm.box      = BASEBOX
+    wildfly.vm.hostname = "wildfly.nexusmidplane.internal"
+    wildfly.vm.network  "private_network", ip: "192.168.56.11"
+    wildfly.vm.network  "forwarded_port",  guest: 8080, host: 8280
+    wildfly.vm.network  "forwarded_port",  guest: 9990, host: 9990  # Admin console
+
+    wildfly.vm.provider "virtualbox" do |vb|
+      vb.name   = "nexus-wildfly"
+      vb.memory = "1024"
+      vb.cpus   = 1
+    end
+
+    wildfly.vm.provision "shell", inline: common_provision
+
+    wildfly.vm.provision "shell", inline: <<~SHELL
+      set -euo pipefail
+      WILDFLY_VERSION="31.0.0.Final"
+      WILDFLY_HOME="/opt/wildfly"
+
+      # Download and install WildFly
+      wget -q "https://github.com/wildfly/wildfly/releases/download/${WILDFLY_VERSION}/wildfly-${WILDFLY_VERSION}.zip" \
+        -O /tmp/wildfly.zip
+      unzip -q /tmp/wildfly.zip -d /opt/
+      ln -s "/opt/wildfly-${WILDFLY_VERSION}" "$WILDFLY_HOME"
+
+      # Create wildfly user
+      useradd -r -d "$WILDFLY_HOME" -s /sbin/nologin wildfly 2>/dev/null || true
+      chown -R wildfly:wildfly "$WILDFLY_HOME"
+
+      # systemd service
+      cat > /etc/systemd/system/wildfly.service <<EOF
+      [Unit]
+      Description=WildFly Application Server
+      After=syslog.target network.target
+
+      [Service]
+      Type=simple
+      User=wildfly
+      Group=wildfly
+      ExecStart=${WILDFLY_HOME}/bin/standalone.sh -b 0.0.0.0
+      ExecStop=${WILDFLY_HOME}/bin/jboss-cli.sh --connect command=:shutdown
+      Restart=on-failure
+
+      [Install]
+      WantedBy=multi-user.target
+      EOF
+
+      systemctl daemon-reload
+      systemctl enable --now wildfly
+      echo "WildFly $WILDFLY_VERSION installed and running on :8080"
+    SHELL
+
+    # Ansible provisioner (alternative to shell) — comment out shell above and enable:
+    # wildfly.vm.provision "ansible" do |ansible|
+    #   ansible.playbook       = "ansible/onprem.yml"
+    #   ansible.groups         = { "wildfly_servers" => ["wildfly-vm"] }
+    #   ansible.extra_vars     = { env: "local" }
+    # end
+  end
+
+  # ─────────────────────────────────────────────────────────
+  # VM 3: .NET App (Kestrel)
+  # ─────────────────────────────────────────────────────────
+  config.vm.define "dotnet-vm" do |dotnet|
+    dotnet.vm.box      = BASEBOX
+    dotnet.vm.hostname = "dotnet.nexusmidplane.internal"
+    dotnet.vm.network  "private_network", ip: "192.168.56.12"
+    dotnet.vm.network  "forwarded_port",  guest: 5000, host: 5100
+
+    dotnet.vm.provider "virtualbox" do |vb|
+      vb.name   = "nexus-dotnet"
+      vb.memory = "768"
+      vb.cpus   = 1
+    end
+
+    dotnet.vm.provision "shell", inline: <<~SHELL
+      set -euo pipefail
+
+      # Install .NET 8 SDK
+      rpm --import https://packages.microsoft.com/keys/microsoft.asc
+      dnf install -y https://packages.microsoft.com/config/rhel/9/packages-microsoft-prod.rpm
+      dnf install -y dotnet-sdk-8.0
+
+      dotnet --version
+      echo ".NET SDK installed. Deploy app with Ansible or by copying publish/ artifacts."
+    SHELL
+  end
+
+  # ─────────────────────────────────────────────────────────
+  # Global VirtualBox settings
+  # ─────────────────────────────────────────────────────────
+  config.vm.provider "virtualbox" do |vb|
+    vb.gui              = false
+    vb.linked_clone     = true   # Faster provisioning, shared base disk
+    vb.check_guest_additions = false
+  end
+
+  # ─────────────────────────────────────────────────────────
+  # Ansible provisioning (optional — run after all VMs are up)
+  # Demonstrates using Ansible with Vagrant's built-in inventory
+  # ─────────────────────────────────────────────────────────
+  # Uncomment to use Ansible instead of shell provisioners above:
+  #
+  # config.vm.provision "ansible" do |ansible|
+  #   ansible.limit      = "all"
+  #   ansible.playbook   = "ansible/onprem.yml"
+  #   ansible.groups     = {
+  #     "apache_servers"  => ["apache-vm"],
+  #     "wildfly_servers" => ["wildfly-vm"],
+  #     "dotnet_servers"  => ["dotnet-vm"],
+  #   }
+  # end
+
+end
+
+# ─────────────────────────────────────────────────────────────
+# Why Docker over Vagrant? See docs/design-decisions.md ADR-003
+#
+# TL;DR: Docker starts in seconds, uses ~200 MB RAM total vs
+# ~2+ GB for three VMs. Vagrant is retained here as a reference
+# for teams needing full OS-level isolation or demonstrating
+# Vagrant + Ansible provisioning patterns.
+# ─────────────────────────────────────────────────────────────

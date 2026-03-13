@@ -1,0 +1,22 @@
+[Unit]
+Description=WildFly Application Server {{ wildfly_version }}
+After=network.target
+
+[Service]
+User={{ wildfly_user }}
+Group={{ wildfly_group }}
+Environment=JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+Environment=JBOSS_HOME={{ wildfly_home }}
+Environment=LAUNCH_JBOSS_IN_BACKGROUND=1
+PIDFile=/var/run/wildfly/wildfly.pid
+ExecStart={{ wildfly_home }}/bin/standalone.sh \
+    -b {{ wildfly_bind_address }} \
+    -bmanagement {{ mgmt_bind_address }}
+ExecStop={{ wildfly_home }}/bin/jboss-cli.sh --connect command=:shutdown
+TimeoutStartSec=120
+TimeoutStopSec=60
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target
