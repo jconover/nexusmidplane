@@ -178,6 +178,7 @@ resource "aws_cloudwatch_dashboard" "main" {
         properties = {
           title  = "WildFly CPU Utilization"
           view   = "timeSeries"
+          region = var.region
           period = 300
           metrics = [
             ["AWS/EC2", "CPUUtilization", "InstanceId", var.linux_instance_id]
@@ -195,6 +196,7 @@ resource "aws_cloudwatch_dashboard" "main" {
         properties = {
           title  = "IIS CPU Utilization"
           view   = "timeSeries"
+          region = var.region
           period = 300
           metrics = [
             ["AWS/EC2", "CPUUtilization", "InstanceId", var.windows_instance_id]
@@ -212,6 +214,7 @@ resource "aws_cloudwatch_dashboard" "main" {
         properties = {
           title  = "Network I/O"
           view   = "timeSeries"
+          region = var.region
           period = 300
           metrics = [
             ["AWS/EC2", "NetworkIn", "InstanceId", var.linux_instance_id, { label = "WildFly In" }],
@@ -231,6 +234,7 @@ resource "aws_cloudwatch_dashboard" "main" {
         properties = {
           title  = "Disk Operations"
           view   = "timeSeries"
+          region = var.region
           period = 300
           metrics = [
             ["AWS/EC2", "DiskReadOps", "InstanceId", var.linux_instance_id, { label = "WildFly Read" }],
@@ -250,6 +254,7 @@ resource "aws_cloudwatch_dashboard" "main" {
         properties = {
           title  = "Status Checks"
           view   = "timeSeries"
+          region = var.region
           period = 60
           metrics = [
             ["AWS/EC2", "StatusCheckFailed", "InstanceId", var.linux_instance_id, { label = "WildFly" }],

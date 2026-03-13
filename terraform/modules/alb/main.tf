@@ -11,7 +11,7 @@ locals {
 
 resource "aws_security_group" "alb" {
   name        = "${local.name_prefix}-alb-sg"
-  description = "ALB security group — allows HTTP/HTTPS from internet"
+  description = "ALB security group -- allows HTTP/HTTPS from internet"
   vpc_id      = var.vpc_id
 
   ingress {
@@ -146,8 +146,9 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-# HTTPS listener with path-based routing
+# HTTPS listener with path-based routing (only when a certificate is available)
 resource "aws_lb_listener" "https" {
+  count             = var.certificate_arn != "" ? 1 : 0
   load_balancer_arn = aws_lb.main.arn
   port              = 443
   protocol          = "HTTPS"
@@ -167,7 +168,8 @@ resource "aws_lb_listener" "https" {
 
 # /java/* → WildFly
 resource "aws_lb_listener_rule" "java" {
-  listener_arn = aws_lb_listener.https.arn
+  count        = var.certificate_arn != "" ? 1 : 0
+  listener_arn = aws_lb_listener.https[0].arn
   priority     = 100
 
   action {
@@ -184,7 +186,8 @@ resource "aws_lb_listener_rule" "java" {
 
 # /dotnet/* → IIS
 resource "aws_lb_listener_rule" "dotnet" {
-  listener_arn = aws_lb_listener.https.arn
+  count        = var.certificate_arn != "" ? 1 : 0
+  listener_arn = aws_lb_listener.https[0].arn
   priority     = 200
 
   action {
