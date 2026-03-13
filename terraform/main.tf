@@ -95,9 +95,10 @@ module "cloudwatch" {
 module "vpn" {
   source = "./modules/vpn"
 
-  vpc_id           = module.vpc.vpc_id
-  onprem_public_ip = var.onprem_public_ip
-  onprem_cidr      = var.onprem_cidr
-  environment      = var.environment
-  project_name     = var.project_name
+  vpc_id                 = module.vpc.vpc_id
+  private_route_table_id  = module.vpc.private_route_table_id
+  onprem_public_ip       = var.onprem_public_ip
+  onprem_cidr            = var.onprem_cidr
+  environment            = var.environment
+  project_name           = var.project_name
 }

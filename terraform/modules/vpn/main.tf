@@ -63,21 +63,10 @@ resource "aws_vpn_connection_route" "onprem" {
 
 # ── Route Table Propagation ───────────────────────────────────────────────────
 # Allow VGW to propagate routes to private route tables automatically.
-# This data source looks up route tables in the VPC tagged as private.
-
-data "aws_route_tables" "private" {
-  vpc_id = var.vpc_id
-
-  filter {
-    name   = "tag:tier"
-    values = ["private"]
-  }
-}
 
 resource "aws_vpn_gateway_route_propagation" "private" {
-  for_each       = toset(data.aws_route_tables.private.ids)
   vpn_gateway_id = aws_vpn_gateway.main.id
-  route_table_id = each.value
+  route_table_id = var.private_route_table_id
 }
 
 # ── CloudWatch Alarms ─────────────────────────────────────────────────────────
