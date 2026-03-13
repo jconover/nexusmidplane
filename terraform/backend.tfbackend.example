@@ -1,0 +1,4 @@
+# Copy this file to backend.tfbackend and replace <ACCOUNT_ID> with your AWS account ID.
+# Find your account ID:  aws sts get-caller-identity --query Account --output text
+
+bucket = "nexusmidplane-tfstate-<ACCOUNT_ID>"

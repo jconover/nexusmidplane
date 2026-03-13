@@ -103,42 +103,55 @@ graph TB
 ```
 nexusmidplane/
 ├── terraform/               # AWS infrastructure (VPC, ALB, EC2, ACM, S3, etc.)
+│   ├── bootstrap/           # One-time setup: creates S3 state bucket
 │   ├── modules/
-│   │   ├── networking/      # VPC, subnets, IGW, route tables
-│   │   ├── compute/         # EC2 instances (Linux + Windows)
+│   │   ├── vpc/             # VPC, subnets, IGW, route tables
+│   │   ├── ec2-linux/       # WildFly EC2 instance (Amazon Linux 2023)
+│   │   ├── ec2-windows/     # IIS EC2 instance (Windows Server 2022)
 │   │   ├── alb/             # Application Load Balancer + target groups
-│   │   └── security/        # Security groups, IAM roles
+│   │   ├── acm/             # ACM TLS certificate
+│   │   ├── secrets/         # Secrets Manager entries
+│   │   ├── cloudwatch/      # Log groups + alarms
+│   │   └── vpn/             # Site-to-site VPN gateway
+│   ├── backend.tf           # S3 backend config (partial — uses .tfbackend)
+│   ├── backend.tfbackend.example  # Template for account-specific bucket name
 │   ├── main.tf
 │   ├── variables.tf
 │   └── outputs.tf
 ├── ansible/                 # Configuration management playbooks
-│   ├── inventory/           # Dynamic AWS inventory + static on-prem
+│   ├── inventory/           # Dynamic AWS inventory (aws_ec2 plugin)
 │   ├── roles/
-│   │   ├── wildfly/         # JBoss/WildFly install + deploy
-│   │   ├── iis/             # IIS feature install + site config
-│   │   └── common/          # Baseline hardening, monitoring agents
-│   └── site.yml             # Master playbook
+│   │   ├── jboss-setup/     # WildFly installation
+│   │   ├── jboss-deploy/    # WAR deployment to WildFly
+│   │   ├── iis-setup/       # IIS feature install
+│   │   ├── iis-deploy/      # .NET app deployment to IIS
+│   │   ├── apache-proxy/    # Apache reverse proxy config
+│   │   ├── ssl-onprem/      # On-prem TLS certificates
+│   │   ├── ssl-jboss/       # WildFly TLS configuration
+│   │   └── patch-mgmt/      # OS patch management
+│   ├── site.yml             # Master playbook (imports aws.yml + onprem.yml)
+│   ├── aws.yml              # AWS-specific plays
+│   └── onprem.yml           # On-prem-specific plays
 ├── docker/                  # On-prem simulation
 │   ├── apache/              # Apache reverse proxy config
-│   ├── wildfly/             # WildFly container + sample WAR
-│   └── dotnet/              # .NET 8 application container
+│   ├── wildfly/             # WildFly container (multi-stage build with WAR)
+│   ├── dotnet/              # .NET 8 application container
+│   └── docker-compose.yml
 ├── app/                     # Sample applications
-│   ├── java-api/            # Maven project → WAR artifact
-│   └── dotnet-api/          # ASP.NET Core minimal API
-├── pipelines/               # CI/CD
-│   └── .github/workflows/
-│       ├── build.yml        # Build + test on PR
-│       ├── deploy-onprem.yml
-│       ├── deploy-aws.yml
-│       └── destroy.yml      # Teardown workflow
+│   ├── java-app/            # Spring Boot WAR (Maven) → deployed to WildFly
+│   └── dotnet-app/          # ASP.NET Core minimal API
+├── .github/workflows/
+│   └── deploy.yml           # Full CI/CD pipeline (lint, build, plan, apply, configure, smoke test)
 ├── scripts/
+│   ├── smoke-test.sh        # End-to-end health check (on-prem + AWS)
 │   ├── teardown-aws.sh      # Safe destroy with confirmation
-│   ├── rotate-secrets.sh    # Secrets Manager rotation helper
-│   └── health-check.sh      # End-to-end smoke test
+│   ├── setup-local.sh       # Local dev environment setup
+│   └── ssl-renew.sh         # SSL certificate renewal helper
 └── docs/
     ├── architecture.md      # Detailed architecture notes
     ├── runbook.md           # Operational runbook
-    └── cost-analysis.md     # Detailed cost breakdown
+    ├── design-decisions.md  # Design rationale
+    └── cost-estimate.md     # Detailed cost breakdown
 ```
 
 ---
@@ -186,23 +199,35 @@ curl http://localhost/dotnet/health  # → .NET response
 ### AWS Tier — Cloud infrastructure
 
 ```bash
-# 1. Provision infrastructure
-cd terraform
+# 1. Bootstrap the Terraform state bucket (one-time)
+cd terraform/bootstrap
 terraform init
+terraform apply
+#    → Creates S3 bucket "nexusmidplane-tfstate-<YOUR_ACCOUNT_ID>"
+
+# 2. Configure the backend with your bucket name
+cd ..
+cp backend.tfbackend.example backend.tfbackend
+#    → Edit backend.tfbackend and set your bucket name from the bootstrap output
+
+# 3. Initialize and provision infrastructure
+terraform init -backend-config=backend.tfbackend
 terraform plan -out=tfplan
 terraform apply tfplan
 
-# 2. Configure middleware (Ansible reads dynamic AWS inventory)
+# 4. Configure middleware (Ansible reads dynamic AWS inventory)
 cd ../ansible
-ansible-playbook site.yml -i inventory/aws_ec2.yml
+ansible-galaxy install -r requirements.yml
+ansible-playbook aws.yml -i inventory/aws_ec2.yml
 
-# 3. Run smoke tests
-../scripts/health-check.sh
+# 5. Run smoke tests
+TARGET_HOST=$(cd ../terraform && terraform output -raw alb_dns_name) \
+  TARGET_SCHEME=https ../scripts/smoke-test.sh
 ```
 
 ### Full pipeline via GitHub Actions
 
-Push to `main` triggers the full build → test → deploy pipeline. See [`.github/workflows/deploy-aws.yml`](pipelines/.github/workflows/deploy-aws.yml).
+Push to `main` triggers the full build → test → deploy pipeline. See [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml).
 
 ---
 
@@ -294,11 +319,10 @@ terraform destroy
 docker compose -f docker/docker-compose.yml down
 ```
 
-> **Note:** `terraform destroy` will prompt for confirmation. The S3 bucket has `prevent_destroy = true` by default to protect artifacts — comment this out if you want a full clean teardown.
+> **Note:** `terraform destroy` will prompt for confirmation. The state S3 bucket (managed by `terraform/bootstrap/`) has `prevent_destroy = true` — this is intentional so you don't lose state. To fully remove the bucket, remove the lifecycle block in `bootstrap/main.tf` and run `terraform destroy` there.
 
 ---
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
-# nexusmidplane

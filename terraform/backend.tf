@@ -1,30 +1,22 @@
-# Remote state backend using S3 + DynamoDB for state locking.
+# Remote state backend using S3 with native state locking (use_lockfile).
 #
 # SETUP (one-time, before first terraform init):
-#   1. Create the S3 bucket:
-#      aws s3api create-bucket --bucket nexusmidplane-tfstate-<ACCOUNT_ID> \
-#        --region us-east-2 --create-bucket-configuration LocationConstraint=us-east-2
-#      aws s3api put-bucket-versioning --bucket nexusmidplane-tfstate-<ACCOUNT_ID> \
-#        --versioning-configuration Status=Enabled
-#      aws s3api put-bucket-encryption --bucket nexusmidplane-tfstate-<ACCOUNT_ID> \
-#        --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+#   1. Bootstrap the state bucket:
+#      cd bootstrap && terraform init && terraform apply
 #
-#   2. Create the DynamoDB table:
-#      aws dynamodb create-table --table-name nexusmidplane-tfstate-lock \
-#        --attribute-definitions AttributeName=LockID,AttributeType=S \
-#        --key-schema AttributeName=LockID,KeyType=HASH \
-#        --billing-mode PAY_PER_REQUEST \
-#        --region us-east-2
+#   2. Copy the example backend config and fill in the bucket name from bootstrap output:
+#      cp backend.tfbackend.example backend.tfbackend
+#      # Edit backend.tfbackend — set bucket = "nexusmidplane-tfstate-<YOUR_ACCOUNT_ID>"
 #
-#   3. Replace <ACCOUNT_ID> below with your AWS account ID, then run:
-#      terraform init
+#   3. Initialize Terraform with backend config:
+#      terraform init -backend-config=backend.tfbackend
 
 terraform {
   backend "s3" {
-    bucket         = "nexusmidplane-tfstate-<ACCOUNT_ID>"
-    key            = "terraform.tfstate"
-    region         = "us-east-2"
-    dynamodb_table = "nexusmidplane-tfstate-lock"
-    encrypt        = true
+    # bucket is provided via -backend-config=backend.tfbackend (gitignored)
+    key          = "terraform.tfstate"
+    region       = "us-east-2"
+    use_lockfile = true
+    encrypt      = true
   }
 }
