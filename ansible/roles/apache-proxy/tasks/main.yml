@@ -1,0 +1,46 @@
+---
+- name: Install Apache2
+  ansible.builtin.package:
+    name: apache2
+    state: present
+
+- name: Enable required Apache modules
+  community.general.apache2_module:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - proxy
+    - proxy_http
+    - ssl
+    - proxy_balancer
+    - lbmethod_byrequests
+    - headers
+    - rewrite
+  notify: restart apache2
+
+- name: Deploy NexusMidplane VirtualHost config
+  ansible.builtin.template:
+    src: nexusmidplane-vhost.conf.j2
+    dest: /etc/apache2/sites-available/nexusmidplane.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart apache2
+
+- name: Disable default site
+  ansible.builtin.command: a2dissite 000-default.conf
+  args:
+    removes: /etc/apache2/sites-enabled/000-default.conf
+  notify: restart apache2
+
+- name: Enable NexusMidplane site
+  ansible.builtin.command: a2ensite nexusmidplane.conf
+  args:
+    creates: /etc/apache2/sites-enabled/nexusmidplane.conf
+  notify: restart apache2
+
+- name: Ensure Apache is started and enabled
+  ansible.builtin.service:
+    name: apache2
+    state: started
+    enabled: true

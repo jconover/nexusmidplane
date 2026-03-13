@@ -1,0 +1,7 @@
+---
+war_source_path: "{{ playbook_dir }}/../apps/java-app/target/java-app.war"
+app_context: java-app
+wildfly_home: /opt/wildfly
+wildfly_user: wildfly
+health_endpoint: "http://localhost:{{ wildfly_http_port | default(8080) }}/{{ app_context }}/health"
+deploy_timeout: 60

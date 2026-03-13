@@ -1,0 +1,10 @@
+---
+ssl_cert_source: "{{ playbook_dir }}/../certs/nexusmidplane.crt"
+ssl_key_source: "{{ playbook_dir }}/../certs/nexusmidplane.key"
+ssl_cert_dest_linux: /etc/ssl/certs/nexusmidplane.crt
+ssl_key_dest_linux: /etc/ssl/private/nexusmidplane.key
+cert_store_location: LocalMachine
+cert_store_name: MY
+ssl_cert_dest_windows: C:\certs\nexusmidplane.crt
+ssl_pfx_dest_windows: C:\certs\nexusmidplane.pfx
+pfx_password: "{{ vault_pfx_password | default('changeme') }}"

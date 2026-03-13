@@ -1,0 +1,6 @@
+---
+- name: Deploy full NexusMidplane stack
+  import_playbook: onprem.yml
+
+- name: Deploy AWS stack
+  import_playbook: aws.yml

@@ -1,0 +1,26 @@
+batch
+
+# Create key-store
+/subsystem=elytron/key-store=nexusmidplaneKS:add( \
+    path="{{ keystore_path }}", \
+    type=JKS, \
+    credential-reference={clear-text="{{ keystore_password }}"})
+
+# Create key-manager
+/subsystem=elytron/key-manager=nexusmidplaneKM:add( \
+    key-store=nexusmidplaneKS, \
+    alias-filter="{{ cert_alias }}", \
+    credential-reference={clear-text="{{ keystore_password }}"})
+
+# Create SSL context
+/subsystem=elytron/server-ssl-context=nexusmidplaneSSC:add( \
+    key-manager=nexusmidplaneKM, \
+    protocols=["TLSv1.2","TLSv1.3"])
+
+# Add HTTPS listener
+/subsystem=undertow/server=default-server/https-listener=https:add( \
+    socket-binding=https, \
+    ssl-context=nexusmidplaneSSC, \
+    enable-http2=true)
+
+run-batch

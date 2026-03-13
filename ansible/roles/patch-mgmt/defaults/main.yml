@@ -1,0 +1,10 @@
+---
+patch_mode: scan          # Options: scan | apply
+reboot_allowed: false
+patch_log_dir: /var/log/nexusmidplane/patches
+patch_report_path: "{{ patch_log_dir }}/patch-report-{{ ansible_date_time.date }}.txt"
+windows_update_categories:
+  - SecurityUpdates
+  - CriticalUpdates
+windows_update_reject_list: []
+approval_tag: patch_approved

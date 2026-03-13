@@ -1,0 +1,10 @@
+---
+wildfly_backend_host: "{{ hostvars[groups['wildfly_servers'][0]]['ansible_host'] | default('wildfly-onprem') }}"
+wildfly_backend_port: 8080
+dotnet_backend_host: "{{ hostvars[groups['iis_servers'][0]]['ansible_host'] | default('iis-onprem') }}"
+dotnet_backend_port: 5000
+ssl_cert_path: /etc/ssl/certs/nexusmidplane.crt
+ssl_key_path: /etc/ssl/private/nexusmidplane.key
+server_name: nexusmidplane.local
+http_port: 80
+https_port: 443

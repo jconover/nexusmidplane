@@ -1,0 +1,9 @@
+---
+ssl_cert_source: "{{ playbook_dir }}/../certs/nexusmidplane.crt"
+ssl_key_source: "{{ playbook_dir }}/../certs/nexusmidplane.key"
+wildfly_home: /opt/wildfly
+wildfly_user: wildfly
+keystore_path: "{{ wildfly_home }}/standalone/configuration/nexusmidplane.jks"
+keystore_password: "{{ vault_keystore_password | default('changeme123') }}"
+cert_alias: nexusmidplane
+pkcs12_path: /tmp/nexusmidplane.p12

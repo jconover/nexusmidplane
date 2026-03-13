@@ -1,0 +1,38 @@
+<VirtualHost *:{{ http_port }}>
+    ServerName {{ server_name }}
+
+    # Redirect all HTTP to HTTPS
+    RewriteEngine On
+    RewriteRule ^(.*)$ https://%{HTTP_HOST}$1 [R=301,L]
+</VirtualHost>
+
+<VirtualHost *:{{ https_port }}>
+    ServerName {{ server_name }}
+
+    SSLEngine on
+    SSLCertificateFile {{ ssl_cert_path }}
+    SSLCertificateKeyFile {{ ssl_key_path }}
+    SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1
+    SSLCipherSuite ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384
+    SSLHonorCipherOrder off
+
+    Header always set Strict-Transport-Security "max-age=63072000"
+    Header always set X-Content-Type-Options nosniff
+    Header always set X-Frame-Options SAMEORIGIN
+
+    # Java/WildFly backend
+    ProxyPreserveHost On
+    ProxyPass /java/ http://{{ wildfly_backend_host }}:{{ wildfly_backend_port }}/
+    ProxyPassReverse /java/ http://{{ wildfly_backend_host }}:{{ wildfly_backend_port }}/
+
+    # .NET/IIS backend
+    ProxyPass /dotnet/ http://{{ dotnet_backend_host }}:{{ dotnet_backend_port }}/
+    ProxyPassReverse /dotnet/ http://{{ dotnet_backend_host }}:{{ dotnet_backend_port }}/
+
+    # Health check endpoint
+    ProxyPass /health/ http://{{ wildfly_backend_host }}:{{ wildfly_backend_port }}/health/
+    ProxyPassReverse /health/ http://{{ wildfly_backend_host }}:{{ wildfly_backend_port }}/health/
+
+    ErrorLog ${APACHE_LOG_DIR}/nexusmidplane_error.log
+    CustomLog ${APACHE_LOG_DIR}/nexusmidplane_access.log combined
+</VirtualHost>

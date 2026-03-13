@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NexusMidplane On-Prem Gateway</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 60px auto; padding: 0 20px; background: #f5f5f5; }
+        h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+        .service { background: white; border-radius: 6px; padding: 20px; margin: 15px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .service h2 { color: #34495e; margin-top: 0; }
+        a { color: #3498db; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .badge { display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 12px; margin-left: 8px; }
+        .java { background: #e74c3c; color: white; }
+        .dotnet { background: #9b59b6; color: white; }
+    </style>
+</head>
+<body>
+    <h1>NexusMidplane On-Prem Gateway</h1>
+    <p>Apache HTTPD reverse proxy routing to backend middleware services.</p>
+
+    <div class="service">
+        <h2>Java / WildFly <span class="badge java">WildFly 30</span></h2>
+        <p>Spring Boot application deployed as WAR on WildFly 30 (Java EE).</p>
+        <ul>
+            <li><a href="/java/health">/java/health</a> — Health check</li>
+            <li><a href="/java/hello">/java/hello</a> — Hello endpoint</li>
+            <li><a href="/java/info">/java/info</a> — Service info</li>
+        </ul>
+    </div>
+
+    <div class="service">
+        <h2>.NET / ASP.NET Core <span class="badge dotnet">.NET 8</span></h2>
+        <p>ASP.NET Core minimal API (simulates IIS-hosted .NET in on-prem environments).</p>
+        <ul>
+            <li><a href="/dotnet/health">/dotnet/health</a> — Health check</li>
+            <li><a href="/dotnet/hello">/dotnet/hello</a> — Hello endpoint</li>
+            <li><a href="/dotnet/info">/dotnet/info</a> — Service info</li>
+        </ul>
+    </div>
+</body>
+</html>

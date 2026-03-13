@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<server xmlns="urn:jboss:domain:20.0">
+    <extensions>
+        <extension module="org.jboss.as.connector"/>
+        <extension module="org.jboss.as.deployment-scanner"/>
+        <extension module="org.jboss.as.ee"/>
+        <extension module="org.jboss.as.ejb3"/>
+        <extension module="org.jboss.as.jaxrs"/>
+        <extension module="org.jboss.as.jpa"/>
+        <extension module="org.jboss.as.logging"/>
+        <extension module="org.jboss.as.naming"/>
+        <extension module="org.jboss.as.security"/>
+        <extension module="org.jboss.as.transactions"/>
+        <extension module="org.jboss.as.undertow"/>
+        <extension module="org.wildfly.extension.elytron"/>
+        <extension module="org.wildfly.extension.health"/>
+    </extensions>
+
+    <profile>
+        <subsystem xmlns="urn:jboss:domain:undertow:14.0"
+                   default-server="default-server"
+                   default-virtual-host="default-host"
+                   default-servlet-container="default">
+            <server name="default-server">
+                <http-listener name="default"
+                               socket-binding="http"
+                               redirect-socket="https"/>
+                <!-- HTTPS listener stub - configured by ssl-jboss role -->
+                <!-- <https-listener name="https" socket-binding="https" ssl-context="applicationSSC"/> -->
+            </server>
+            <host name="default-host" alias="localhost">
+                <location name="/" handler="welcome-content"/>
+                <http-invoker http-authentication-factory="application-http-authentication"/>
+            </host>
+        </subsystem>
+
+        <subsystem xmlns="urn:jboss:domain:deployment-scanner:2.0">
+            <deployment-scanner path="deployments"
+                                relative-to="jboss.server.base.dir"
+                                scan-interval="5000"
+                                runtime-failure-causes-rollback="false"/>
+        </subsystem>
+
+        <subsystem xmlns="urn:jboss:domain:health:1.0"/>
+
+        <subsystem xmlns="urn:jboss:domain:logging:8.0">
+            <console-handler name="CONSOLE">
+                <level name="INFO"/>
+                <formatter>
+                    <named-formatter name="COLOR-PATTERN"/>
+                </formatter>
+            </console-handler>
+            <logger category="com.arjuna">
+                <level name="WARN"/>
+            </logger>
+            <root-logger>
+                <level name="INFO"/>
+                <handlers>
+                    <handler name="CONSOLE"/>
+                </handlers>
+            </root-logger>
+            <formatter name="COLOR-PATTERN">
+                <pattern-formatter pattern="%K{level}%d{HH:mm:ss,SSS} %-5p [%c] (%t) %s%e%n"/>
+            </formatter>
+        </subsystem>
+    </profile>
+
+    <interfaces>
+        <interface name="management">
+            <inet-address value="${jboss.bind.address.management:{{ mgmt_bind_address }}}"/>
+        </interface>
+        <interface name="public">
+            <inet-address value="${jboss.bind.address:{{ wildfly_bind_address }}}"/>
+        </interface>
+    </interfaces>
+
+    <socket-binding-group name="standard-sockets"
+                          default-interface="public"
+                          port-offset="${jboss.socket.binding.port-offset:0}">
+        <socket-binding name="http" port="${jboss.http.port:{{ wildfly_http_port }}}"/>
+        <socket-binding name="https" port="${jboss.https.port:{{ wildfly_https_port }}}"/>
+        <socket-binding name="management-http" interface="management" port="${jboss.management.http.port:{{ wildfly_mgmt_port }}}"/>
+    </socket-binding-group>
+</server>

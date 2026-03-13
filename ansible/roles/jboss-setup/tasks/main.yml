@@ -1,0 +1,115 @@
+---
+- name: Install Java 17 (Debian/Ubuntu)
+  ansible.builtin.apt:
+    name: "{{ java_package_debian }}"
+    state: present
+    update_cache: true
+  when: ansible_os_family == "Debian"
+
+- name: Install Java 17 (RHEL/CentOS)
+  ansible.builtin.dnf:
+    name: "{{ java_package_rhel }}"
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Create WildFly group
+  ansible.builtin.group:
+    name: "{{ wildfly_group }}"
+    system: true
+    state: present
+
+- name: Create WildFly user
+  ansible.builtin.user:
+    name: "{{ wildfly_user }}"
+    group: "{{ wildfly_group }}"
+    system: true
+    shell: /sbin/nologin
+    home: "{{ wildfly_home }}"
+    create_home: false
+    state: present
+
+- name: Create WildFly home directory
+  ansible.builtin.file:
+    path: "{{ wildfly_home }}"
+    state: directory
+    owner: "{{ wildfly_user }}"
+    group: "{{ wildfly_group }}"
+    mode: "0755"
+
+- name: Download WildFly {{ wildfly_version }}
+  ansible.builtin.get_url:
+    url: "{{ wildfly_download_url }}"
+    dest: /tmp/wildfly-{{ wildfly_version }}.tar.gz
+    mode: "0644"
+
+- name: Extract WildFly archive
+  ansible.builtin.unarchive:
+    src: /tmp/wildfly-{{ wildfly_version }}.tar.gz
+    dest: /opt/
+    remote_src: true
+    creates: /opt/wildfly-{{ wildfly_version }}
+
+- name: Create symlink /opt/wildfly → versioned directory
+  ansible.builtin.file:
+    src: /opt/wildfly-{{ wildfly_version }}
+    dest: "{{ wildfly_home }}"
+    state: link
+    force: true
+
+- name: Set WildFly directory ownership
+  ansible.builtin.file:
+    path: /opt/wildfly-{{ wildfly_version }}
+    owner: "{{ wildfly_user }}"
+    group: "{{ wildfly_group }}"
+    recurse: true
+
+- name: Deploy standalone.xml from template
+  ansible.builtin.template:
+    src: standalone.xml.j2
+    dest: "{{ wildfly_home }}/standalone/configuration/standalone.xml"
+    owner: "{{ wildfly_user }}"
+    group: "{{ wildfly_group }}"
+    mode: "0640"
+  notify: restart wildfly
+
+- name: Deploy systemd service unit
+  ansible.builtin.template:
+    src: wildfly.service.j2
+    dest: /etc/systemd/system/wildfly.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - reload systemd
+    - restart wildfly
+
+- name: Open HTTP port {{ wildfly_http_port }}
+  community.general.ufw:
+    rule: allow
+    port: "{{ wildfly_http_port }}"
+    proto: tcp
+  when: ansible_os_family == "Debian"
+  ignore_errors: true
+
+- name: Open HTTPS port {{ wildfly_https_port }}
+  community.general.ufw:
+    rule: allow
+    port: "{{ wildfly_https_port }}"
+    proto: tcp
+  when: ansible_os_family == "Debian"
+  ignore_errors: true
+
+- name: Open management port {{ wildfly_mgmt_port }}
+  community.general.ufw:
+    rule: allow
+    port: "{{ wildfly_mgmt_port }}"
+    proto: tcp
+  when: ansible_os_family == "Debian"
+  ignore_errors: true
+
+- name: Enable and start WildFly service
+  ansible.builtin.systemd:
+    name: wildfly
+    state: started
+    enabled: true
+    daemon_reload: true

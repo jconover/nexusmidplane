@@ -1,0 +1,17 @@
+---
+app_source_path: "{{ playbook_dir }}/../apps/dotnet-app/publish/"
+app_dest_path: C:\inetpub\nexusmidplane
+iis_site_name: NexusMidplane
+iis_app_pool_name: NexusMidplanePool
+site_bindings:
+  - protocol: http
+    ip: "*"
+    port: 80
+    hostname: ""
+  - protocol: https
+    ip: "*"
+    port: 443
+    hostname: ""
+    certificate_hash: ""
+    certificate_store_name: MY
+ssl_cert_thumbprint: ""

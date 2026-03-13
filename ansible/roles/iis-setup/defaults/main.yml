@@ -1,0 +1,7 @@
+---
+dotnet_hosting_bundle_url: "https://download.visualstudio.microsoft.com/download/pr/dotnet-hosting-8.0-win.exe"
+dotnet_hosting_bundle_checksum: "sha256:PLACEHOLDER"
+iis_site_name: NexusMidplane
+iis_site_path: C:\inetpub\nexusmidplane
+iis_app_pool_name: NexusMidplanePool
+iis_app_pool_dotnet_version: ""  # No managed code for ASP.NET Core

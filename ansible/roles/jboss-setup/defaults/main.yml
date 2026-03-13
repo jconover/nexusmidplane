@@ -1,0 +1,14 @@
+---
+wildfly_version: "30.0.1.Final"
+wildfly_home: /opt/wildfly
+wildfly_user: wildfly
+wildfly_group: wildfly
+wildfly_bind_address: "0.0.0.0"
+mgmt_bind_address: "127.0.0.1"
+wildfly_http_port: 8080
+wildfly_https_port: 8443
+wildfly_mgmt_port: 9990
+java_package_debian: openjdk-17-jdk
+java_package_rhel: java-17-openjdk-devel
+wildfly_download_url: "https://github.com/wildfly/wildfly/releases/download/{{ wildfly_version }}/wildfly-{{ wildfly_version }}.tar.gz"
+wildfly_checksum: "sha256:PLACEHOLDER"

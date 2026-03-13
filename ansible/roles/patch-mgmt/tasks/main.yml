@@ -1,0 +1,128 @@
+---
+# === LINUX PATCHING ===
+- name: Ensure patch log directory exists (Linux)
+  ansible.builtin.file:
+    path: "{{ patch_log_dir }}"
+    state: directory
+    mode: "0755"
+  when: ansible_os_family != "Windows"
+
+- name: Update apt cache (Debian/Ubuntu)
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  when:
+    - ansible_os_family == "Debian"
+    - patch_mode in ["scan", "apply"]
+
+- name: Scan available updates (Debian/Ubuntu)
+  ansible.builtin.apt:
+    upgrade: dry-run
+  register: apt_dry_run
+  when:
+    - ansible_os_family == "Debian"
+    - patch_mode == "scan"
+  check_mode: true
+  changed_when: false
+
+- name: Apply updates (Debian/Ubuntu)
+  ansible.builtin.apt:
+    upgrade: safe
+    autoremove: true
+    autoclean: true
+  register: apt_upgrade
+  when:
+    - ansible_os_family == "Debian"
+    - patch_mode == "apply"
+    - inventory_hostname in groups | selectattr('name', 'match', approval_tag) | map(attribute='hosts') | flatten | list
+      or hostvars[inventory_hostname].get(approval_tag, false) | bool
+
+- name: Update dnf cache (RHEL/CentOS)
+  ansible.builtin.dnf:
+    update_cache: true
+  when:
+    - ansible_os_family == "RedHat"
+    - patch_mode in ["scan", "apply"]
+
+- name: Apply updates (RHEL/CentOS)
+  ansible.builtin.dnf:
+    name: "*"
+    state: latest
+  register: dnf_upgrade
+  when:
+    - ansible_os_family == "RedHat"
+    - patch_mode == "apply"
+
+- name: Generate Linux patch report
+  ansible.builtin.copy:
+    content: |
+      NexusMidplane Patch Report
+      ===========================
+      Host: {{ inventory_hostname }}
+      Date: {{ ansible_date_time.iso8601 }}
+      Mode: {{ patch_mode }}
+      OS:   {{ ansible_distribution }} {{ ansible_distribution_version }}
+
+      {% if apt_upgrade is defined and apt_upgrade.changed %}
+      Packages upgraded:
+      {{ apt_upgrade.stdout | default('None') }}
+      {% elif apt_dry_run is defined %}
+      Packages available (dry-run):
+      {{ apt_dry_run.stdout | default('None') }}
+      {% elif dnf_upgrade is defined and dnf_upgrade.changed %}
+      Packages upgraded:
+      {{ dnf_upgrade.results | default([]) | join('\n') }}
+      {% else %}
+      No changes recorded.
+      {% endif %}
+    dest: "{{ patch_report_path }}"
+    mode: "0644"
+  when: ansible_os_family != "Windows"
+
+# === WINDOWS PATCHING ===
+- name: Scan available Windows updates
+  ansible.windows.win_updates:
+    category_names: "{{ windows_update_categories }}"
+    reject_list: "{{ windows_update_reject_list }}"
+    state: searched
+  register: win_update_scan
+  when:
+    - ansible_os_family == "Windows"
+    - patch_mode in ["scan", "apply"]
+
+- name: Show available Windows updates
+  ansible.builtin.debug:
+    msg: "Found {{ win_update_scan.found_update_count | default(0) }} updates available"
+  when:
+    - ansible_os_family == "Windows"
+    - win_update_scan is defined
+
+- name: Apply Windows updates (simulated approval workflow)
+  ansible.windows.win_updates:
+    category_names: "{{ windows_update_categories }}"
+    reject_list: "{{ windows_update_reject_list }}"
+    state: installed
+    reboot: "{{ reboot_allowed }}"
+  register: win_update_install
+  when:
+    - ansible_os_family == "Windows"
+    - patch_mode == "apply"
+    - hostvars[inventory_hostname].get(approval_tag, false) | bool
+
+- name: Generate Windows patch report
+  ansible.windows.win_copy:
+    content: |
+      NexusMidplane Patch Report
+      ===========================
+      Host: {{ inventory_hostname }}
+      Date: {{ ansible_date_time.iso8601 }}
+      Mode: {{ patch_mode }}
+      OS:   {{ ansible_distribution }} {{ ansible_distribution_version }}
+
+      Updates found: {{ win_update_scan.found_update_count | default(0) }}
+      {% if win_update_install is defined and win_update_install.installed_update_count is defined %}
+      Updates installed: {{ win_update_install.installed_update_count }}
+      Reboot required: {{ win_update_install.reboot_required | default(false) }}
+      {% endif %}
+    dest: C:\Logs\patch-report-{{ ansible_date_time.date }}.txt
+  when: ansible_os_family == "Windows"

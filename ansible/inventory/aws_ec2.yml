@@ -1,0 +1,37 @@
+---
+plugin: amazon.aws.aws_ec2
+regions:
+  - us-east-2
+
+filters:
+  tag:project: nexusmidplane
+  instance-state-name: running
+
+keyed_groups:
+  - key: tags.role
+    prefix: ""
+    separator: ""
+
+compose:
+  ansible_host: public_ip_address
+  ansible_user: >-
+    "ec2-user" if tags.get("os", "linux") == "amazon_linux"
+    else "ubuntu" if tags.get("os", "linux") == "ubuntu"
+    else "Administrator"
+  ansible_connection: >-
+    "winrm" if tags.get("role", "") == "iis"
+    else "ssh"
+  ansible_winrm_transport: >-
+    "ntlm" if tags.get("role", "") == "iis"
+    else omit
+  ansible_winrm_server_cert_validation: >-
+    "ignore" if tags.get("role", "") == "iis"
+    else omit
+
+hostnames:
+  - tag:Name
+  - private-ip-address
+
+groups:
+  wildfly_servers: "'wildfly' in tags.get('role', '')"
+  iis_servers: "'iis' in tags.get('role', '')"
