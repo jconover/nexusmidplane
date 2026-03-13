@@ -23,13 +23,17 @@ RETRY_DELAY="${RETRY_DELAY:-5}"
 
 PASSED=0
 FAILED=0
+SKIPPED=0
 
 # ── HTTP check with retry ────────────────────────────────────
+# Usage: check_endpoint <label> <url> [expected_status] [expected_body] [optional]
+# Set optional to "true" to skip without counting as failure
 check_endpoint() {
   local label="$1"
   local url="$2"
   local expected_status="${3:-200}"
   local expected_body="${4:-}"
+  local optional="${5:-false}"
 
   local attempt=1
   while [[ $attempt -le $RETRIES ]]; do
@@ -49,6 +53,11 @@ check_endpoint() {
           attempt=$((attempt + 1))
           continue
         fi
+        if [[ "$optional" == "true" ]]; then
+          echo -e "  ${YELLOW}⊘ SKIP${NC}  $label — HTTP $http_status but body missing '$expected_body' (optional) | URL: $url"
+          SKIPPED=$((SKIPPED + 1))
+          return 0
+        fi
         fail "$label — HTTP $http_status but body missing '$expected_body' | URL: $url"
         FAILED=$((FAILED + 1))
         return 1
@@ -62,6 +71,11 @@ check_endpoint() {
         sleep "$RETRY_DELAY"
         attempt=$((attempt + 1))
         continue
+      fi
+      if [[ "$optional" == "true" ]]; then
+        echo -e "  ${YELLOW}⊘ SKIP${NC}  $label — HTTP $http_status (optional) | URL: $url"
+        SKIPPED=$((SKIPPED + 1))
+        return 0
       fi
       fail "$label — HTTP $http_status (expected $expected_status) | URL: $url"
       FAILED=$((FAILED + 1))
@@ -87,27 +101,27 @@ main() {
   info "Java (WildFly) endpoints"
   check_endpoint "Java health"  "${BASE}/java/health"  200 ""
   check_endpoint "Java hello"   "${BASE}/java/hello"   200 ""
-  check_endpoint "Java metrics" "${BASE}/java/metrics" 200 "" || true  # optional
+  check_endpoint "Java metrics" "${BASE}/java/metrics" 200 "" true
 
   echo ""
   # .NET app endpoints
   info ".NET endpoints"
   check_endpoint ".NET health"  "${BASE}/dotnet/health"  200 ""
   check_endpoint ".NET hello"   "${BASE}/dotnet/hello"   200 ""
-  check_endpoint ".NET metrics" "${BASE}/dotnet/metrics" 200 "" || true  # optional
+  check_endpoint ".NET metrics" "${BASE}/dotnet/metrics" 200 "" true
 
   echo ""
   # Apache proxy (on-prem only)
   if [[ "$TARGET_HOST" == "localhost" ]]; then
     info "Apache proxy endpoints"
     check_endpoint "Apache root"   "${BASE}/"         200 ""
-    check_endpoint "Apache status" "${BASE}/server-status" 200 "" || true  # requires mod_status
+    check_endpoint "Apache status" "${BASE}/server-status" 200 "" true
   fi
 
   # ── Summary ────────────────────────────────────────────────
   echo ""
   echo "──────────────────────────────────────────────────"
-  echo -e "  Results: ${GREEN}${PASSED} passed${NC}  ${RED}${FAILED} failed${NC}"
+  echo -e "  Results: ${GREEN}${PASSED} passed${NC}  ${RED}${FAILED} failed${NC}  ${YELLOW}${SKIPPED} skipped${NC}"
   echo "══════════════════════════════════════════════════"
 
   if [[ $FAILED -gt 0 ]]; then
